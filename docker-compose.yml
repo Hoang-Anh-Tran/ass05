@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+
+  customer-service:
+    build: ./customer-service
+    ports:
+      - "4001:4000"
+
+  book-service:
+    build: ./book-service
+    ports:
+      - "4002:4000"
+
+  cart-service:
+    build: ./cart-service
+    ports:
+      - "4003:4000"
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "4000:4000"
