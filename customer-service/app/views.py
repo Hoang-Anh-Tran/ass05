@@ -19,11 +19,15 @@ class CustomerListCreate(APIView):
         if serializer.is_valid():
             customer = serializer.save()
 
-            # Call cart-service
-            requests.post(
-                f"{CART_SERVICE_URL}/carts/",
-                json={"customer_id": customer.id}
-            )
+            # Call cart-service root (cart-service now maps "" to CartCreate)
+            try:
+                requests.post(
+                    f"{CART_SERVICE_URL}/",
+                    json={"customer_id": customer.id},
+                    timeout=5
+                )
+            except Exception:
+                pass  # Cart creation failure shouldn't block customer creation
 
             return Response(serializer.data)
 

@@ -1,23 +1,21 @@
-"""
-URL configuration for api_gateway project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
+from app import views
 
 urlpatterns = [
+    path("", views.home, name="home"),
     path("admin/", admin.site.urls),
+    
+    # Use re_path to capture any trailing path (making the slash and path optional)
+    re_path(r'^customers/?(?P<path>.*)$', views.customers, name="customers"),
+    re_path(r'^books/?(?P<path>.*)$', views.books, name="books"),
+    re_path(r'^cart/?(?P<path>.*)$', views.cart, name="cart"),
+    re_path(r'^staff/?(?P<path>.*)$', views.staff, name="staff"),
+    re_path(r'^manager/?(?P<path>.*)$', views.manager, name="manager"),
+    re_path(r'^catalog/?(?P<path>.*)$', views.catalog, name="catalog"),
+    re_path(r'^orders/?(?P<path>.*)$', views.orders, name="orders"),
+    re_path(r'^shipping/?(?P<path>.*)$', views.shipping, name="shipping"),
+    re_path(r'^payment/?(?P<path>.*)$', views.payment, name="payment"),
+    re_path(r'^comments/?(?P<path>.*)$', views.comments, name="comments"),
+    re_path(r'^recommendations/?(?P<path>.*)$', views.recommendations, name="recommendations"),
 ]

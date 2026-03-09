@@ -1,23 +1,95 @@
-version: '3.8'
+version: '3.9'
 
 services:
 
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "4000:4000"
+    depends_on:
+      - customer-service
+      - book-service
+      - cart-service
+      - staff-service
+      - manager-service
+      - catalog-service
+      - order-service
+      - ship-service
+      - pay-service
+      - comment-rate-service
+      - recommender-ai-service
+
   customer-service:
     build: ./customer-service
+    container_name: customer-service
     ports:
       - "4001:4000"
 
   book-service:
     build: ./book-service
+    container_name: book-service
     ports:
       - "4002:4000"
 
   cart-service:
     build: ./cart-service
+    container_name: cart-service
     ports:
       - "4003:4000"
 
-  api-gateway:
-    build: ./api-gateway
+  staff-service:
+    build: ./staff-service
+    container_name: staff-service
     ports:
-      - "4000:4000"
+      - "4004:4000"
+
+  manager-service:
+    build: ./manager-service
+    container_name: manager-service
+    ports:
+      - "4005:4000"
+
+  catalog-service:
+    build: ./catalog-service
+    container_name: catalog-service
+    ports:
+      - "4006:4000"
+
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    ports:
+      - "4007:4000"
+
+  ship-service:
+    build: ./ship-service
+    container_name: ship-service
+    ports:
+      - "4008:4000"
+
+  pay-service:
+    build: ./pay-service
+    container_name: pay-service
+    ports:
+      - "4009:4000"
+
+  comment-rate-service:
+    build: ./comment-rate-service
+    container_name: comment-rate-service
+    ports:
+      - "4010:4000"
+
+  recommender-ai-service:
+    build: ./recommender-ai-service
+    container_name: recommender-ai-service
+    ports:
+      - "4011:4000"
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
