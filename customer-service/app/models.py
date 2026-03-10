@@ -3,6 +3,7 @@ from django.db import models
 class Customer(models.Model):
     ROLE_CHOICES = [
         ('customer', 'Customer'),
+        ('staff', 'Staff'),
         ('admin', 'Admin'),
     ]
     name = models.CharField(max_length=255)

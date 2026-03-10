@@ -7,7 +7,7 @@ class PaymentProcess(APIView):
         amount = request.data.get("amount")
         method = request.data.get("method", "credit_card")
         
-        if not order_id or not amount:
+        if not order_id or amount is None:
             return Response({"error": "order_id and amount are required"}, status=400)
             
         method_labels = {

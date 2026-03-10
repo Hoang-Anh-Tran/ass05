@@ -8,15 +8,31 @@ const appState = {
     customerRole: 'customer'
 };
 
-// --- Admin Nav Visibility ---
+// --- Nav Visibility by Role ---
 function updateAdminNav() {
+    const staffLabel = document.getElementById('staff-nav-label');
+    const staffItems = document.querySelectorAll('.staff-nav-item');
     const adminLabel = document.getElementById('admin-nav-label');
     const adminItems = document.querySelectorAll('.admin-nav-item');
     const isAdmin = appState.customerRole === 'admin';
+    const isStaff = appState.customerRole === 'staff';
+    const canManageBooks = isAdmin || isStaff;
+
+    // Staff section: visible for staff and admin
+    if (staffLabel) staffLabel.style.display = canManageBooks ? '' : 'none';
+    staffItems.forEach(el => el.style.display = canManageBooks ? '' : 'none');
+
+    // Admin section: visible for admin only
     if (adminLabel) adminLabel.style.display = isAdmin ? '' : 'none';
     adminItems.forEach(el => el.style.display = isAdmin ? '' : 'none');
-    // If non-admin is on admin page, redirect to store
-    if (!isAdmin && ['dashboard', 'books', 'customers', 'vouchers'].includes(appState.currentView)) {
+
+    // Redirect if on unauthorized page
+    const adminOnlyViews = ['dashboard', 'customers'];
+    const staffViews = ['books', 'vouchers'];
+    if (!canManageBooks && staffViews.includes(appState.currentView)) {
+        document.querySelector('.nav-item[data-target="store"]').click();
+    }
+    if (!isAdmin && adminOnlyViews.includes(appState.currentView)) {
         document.querySelector('.nav-item[data-target="store"]').click();
     }
 }
@@ -403,14 +419,16 @@ async function renderBooks() {
             <div class="grid-cards">
     `;
     books.forEach(b => {
+        const stockColor = b.stock > 10 ? 'var(--success)' : b.stock > 0 ? '#f5a623' : 'var(--danger)';
         html += `
             <div class="data-card">
                 <div class="card-icon"><i class="ri-book-2-line"></i></div>
                 <h3>${b.title}</h3>
                 <p>by ${b.author}</p>
-                <div style="font-weight:600;font-size:18px;margin-bottom:16px;color:var(--accent);">$${b.price} <span style="font-size:12px;font-weight:400;color:var(--text-muted)">| Stock: ${b.stock}</span></div>
+                <div style="font-weight:600;font-size:18px;margin-bottom:16px;color:var(--accent);">$${b.price} <span style="font-size:12px;font-weight:400;color:${stockColor}">| Stock: ${b.stock}</span></div>
                 <div class="card-actions">
-                    <button class="card-btn" onclick="openEditBookModal(${b.id}, '${b.title.replace(/'/g, "\\'")}', '${b.author.replace(/'/g, "\\'")}', ${b.price}, ${b.stock})"><i class="ri-edit-line"></i> Edit</button>
+                    <button class="card-btn" onclick="openRestockModal(${b.id}, '${b.title.replace(/'/g, "\\'")}')"><i class="ri-add-box-line"></i> Restock</button>
+                    <button class="card-btn" onclick="openEditBookModal(${b.id}, '${b.title.replace(/'/g, "\\'")}'  , '${b.author.replace(/'/g, "\\'")}', ${b.price}, ${b.stock})"><i class="ri-edit-line"></i> Edit</button>
                 </div>
             </div>
         `;
@@ -445,6 +463,34 @@ async function updateBook(e, bookId) {
     const res = await apiCall(`/staff/${bookId}/`, 'PUT', data);
     if (res && !res.error) {
         showToast("Book updated!");
+        closeModal();
+        renderBooks();
+    }
+}
+
+function openRestockModal(bookId, bookTitle) {
+    openModal(`
+        <div class="modal-content">
+            <div class="modal-head"><h2><i class="ri-add-box-line" style="color:var(--accent);"></i> Restock "${bookTitle}"</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <form onsubmit="restockBook(event, ${bookId})">
+                <div class="form-group"><label>Quantity to Add</label><input type="number" id="rs-qty" class="form-input" min="1" placeholder="e.g. 50" required></div>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;margin-top:24px;"><i class="ri-add-box-line"></i> Add Stock</button>
+            </form>
+        </div>
+    `);
+}
+
+async function restockBook(e, bookId) {
+    e.preventDefault();
+    const addQty = parseInt(document.getElementById('rs-qty').value);
+    // Fetch current book to get current stock
+    const books = await apiCall('/books/') || [];
+    const book = books.find(b => b.id === bookId);
+    if (!book) { showToast('Book not found', 'error'); return; }
+    const newStock = book.stock + addQty;
+    const res = await apiCall(`/staff/${bookId}/`, 'PUT', { stock: newStock });
+    if (res && !res.error) {
+        showToast(`Restocked! New stock: ${newStock}`);
         closeModal();
         renderBooks();
     }
@@ -647,11 +693,13 @@ function switchToCustomer(id, name, role) {
     appState.customerId = id;
     appState.customerName = name;
     appState.customerRole = role || 'customer';
-    appliedVoucher = null; // Reset voucher on customer switch
-    document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${role === 'admin' ? 'e53e3e' : '4318ff'}&color=fff`;
-    document.getElementById('user-name').textContent = role === 'admin' ? `${name} (Admin)` : name;
+    appliedVoucher = null;
+    const bgColor = role === 'admin' ? 'e53e3e' : role === 'staff' ? 'e88e0a' : '4318ff';
+    document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${bgColor}&color=fff`;
+    const roleLabel = role === 'admin' ? ' (Admin)' : role === 'staff' ? ' (Staff)' : '';
+    document.getElementById('user-name').textContent = `${name}${roleLabel}`;
     updateAdminNav();
-    showToast(`Logged in as ${name}${role === 'admin' ? ' (Admin)' : ''}`);
+    showToast(`Logged in as ${name}${roleLabel}`);
     if (appState.currentView === 'store') renderStore();
 }
 
@@ -838,7 +886,9 @@ async function openCustomerSelector() {
     if (appState.customerId) {
         // Logged in: show user info + logout
         const isAdmin = appState.customerRole === 'admin';
-        const bgColor = isAdmin ? 'e53e3e' : '4318ff';
+        const isStaff = appState.customerRole === 'staff';
+        const bgColor = isAdmin ? 'e53e3e' : isStaff ? 'e88e0a' : '4318ff';
+        const roleBadge = isAdmin ? '<span style="font-size:10px;padding:2px 8px;background:var(--danger);color:white;border-radius:10px;margin-left:6px;">ADMIN</span>' : isStaff ? '<span style="font-size:10px;padding:2px 8px;background:#e88e0a;color:white;border-radius:10px;margin-left:6px;">STAFF</span>' : '';
         openModal(`
             <div class="modal-content" style="width:400px;">
                 <div class="modal-head">
@@ -848,7 +898,7 @@ async function openCustomerSelector() {
                 <div style="display:flex;align-items:center;gap:16px;padding:20px;background:var(--bg-primary);border-radius:var(--radius-md);margin-bottom:20px;">
                     <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(appState.customerName)}&background=${bgColor}&color=fff" style="width:48px;height:48px;border-radius:50%;">
                     <div>
-                        <div style="font-weight:700;font-size:18px;">${appState.customerName} ${isAdmin ? '<span style="font-size:10px;padding:2px 8px;background:var(--danger);color:white;border-radius:10px;margin-left:6px;">ADMIN</span>' : ''}</div>
+                        <div style="font-weight:700;font-size:18px;">${appState.customerName} ${roleBadge}</div>
                         <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Logged in</div>
                     </div>
                 </div>

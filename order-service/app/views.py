@@ -6,13 +6,26 @@ import requests
 
 PAY_SERVICE_URL = "http://pay-service:4000/"
 SHIP_SERVICE_URL = "http://ship-service:4000/"
+CART_SERVICE_URL = "http://cart-service:4000"
+BOOK_SERVICE_URL = "http://book-service:4000"
 
 class OrderCreate(APIView):
     def post(self, request):
         serializer = OrderSerializer(data=request.data)
         if serializer.is_valid():
             order = serializer.save(status='PROCESSING')
-            
+            customer_id = order.customer_id
+
+            # Fetch cart items to know what was ordered
+            cart_items = []
+            try:
+                cart_resp = requests.get(f"{CART_SERVICE_URL}/{customer_id}/")
+                if cart_resp.status_code == 200:
+                    cart_data = cart_resp.json()
+                    cart_items = cart_data.get("items", [])
+            except Exception:
+                pass
+
             # Trigger payment with selected method
             pay_resp = requests.post(PAY_SERVICE_URL, json={
                 "order_id": order.id,
@@ -34,6 +47,10 @@ class OrderCreate(APIView):
                 if ship_resp.status_code in [200, 201]:
                     order.status = 'SHIPPED'
                     order.save()
+
+                    # Decrease stock for each book in the cart
+                    self.decrease_stock(cart_items)
+
                     return Response(OrderSerializer(order).data)
                 else:
                     order.status = 'SHIPPING_FAILED'
@@ -45,6 +62,28 @@ class OrderCreate(APIView):
                 return Response({"error": "Payment failed", "order": OrderSerializer(order).data}, status=400)
                 
         return Response(serializer.errors, status=400)
+
+    def decrease_stock(self, cart_items):
+        """Decrease book stock for each item in the cart."""
+        try:
+            # Fetch all books
+            books_resp = requests.get(f"{BOOK_SERVICE_URL}/")
+            if books_resp.status_code != 200:
+                return
+            books = {b["id"]: b for b in books_resp.json()}
+
+            for item in cart_items:
+                book_id = item.get("book_id")
+                qty = item.get("quantity", 0)
+                if book_id in books:
+                    current_stock = books[book_id].get("stock", 0)
+                    new_stock = max(0, current_stock - qty)
+                    requests.put(
+                        f"{BOOK_SERVICE_URL}/{book_id}/",
+                        json={"stock": new_stock}
+                    )
+        except Exception:
+            pass  # Stock update failure shouldn't block the order
 
 class OrderList(APIView):
     def get(self, request):
