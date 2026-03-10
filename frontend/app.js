@@ -16,7 +16,7 @@ function updateAdminNav() {
     if (adminLabel) adminLabel.style.display = isAdmin ? '' : 'none';
     adminItems.forEach(el => el.style.display = isAdmin ? '' : 'none');
     // If non-admin is on admin page, redirect to store
-    if (!isAdmin && ['dashboard', 'books', 'customers'].includes(appState.currentView)) {
+    if (!isAdmin && ['dashboard', 'books', 'customers', 'vouchers'].includes(appState.currentView)) {
         document.querySelector('.nav-item[data-target="store"]').click();
     }
 }
@@ -88,6 +88,7 @@ function loadView(viewName) {
             case 'customers': renderCustomers(); break;
             case 'cart': renderCart(); break;
             case 'orders': renderOrders(); break;
+            case 'vouchers': renderVouchers(); break;
         }
     }, 200);
 }
@@ -133,7 +134,8 @@ async function renderStore() {
                 <div class="book-stock">${b.stock > 0 ? `${b.stock} in stock` : '<span style="color:var(--danger)">Out of stock</span>'}</div>
                 <div class="card-actions">
                     <button class="card-btn" onclick="addToCart(${b.id})"><i class="ri-shopping-cart-line"></i> Add to Cart</button>
-                    <button class="card-btn" onclick="openRateModal(${b.id}, '${b.title.replace(/'/g, "\\'")}')"><i class="ri-star-line"></i> Rate</button>
+                    <button class="card-btn" onclick="openReviewsModal(${b.id}, '${b.title.replace(/'/g, "\\'")}')" title="View Reviews"><i class="ri-chat-3-line"></i> Reviews</button>
+                    <button class="card-btn" onclick="openRateModal(${b.id}, '${b.title.replace(/'/g, "\\'")}')" title="Write a Review"><i class="ri-star-line"></i> Rate</button>
                 </div>
             </div>
         `;
@@ -143,9 +145,67 @@ async function renderStore() {
     contentArea.innerHTML = html;
 }
 
+// ============= FEATURE 1: VIEW REVIEWS MODAL =============
+
+async function openReviewsModal(bookId, bookTitle) {
+    const reviews = await apiCall(`/comments/?book_id=${bookId}`) || [];
+    const customers = await apiCall("/customers/") || [];
+    const customerMap = {};
+    customers.forEach(c => { customerMap[c.id] = c.name; });
+
+    let reviewHtml = '';
+    if (reviews.length > 0) {
+        reviews.forEach(r => {
+            const customerName = customerMap[r.customer_id] || `Customer #${r.customer_id}`;
+            reviewHtml += `
+                <div class="review-item">
+                    <div class="review-header">
+                        <span class="review-customer"><i class="ri-user-line" style="margin-right:4px;"></i>${customerName}</span>
+                        <span>${renderStars(r.rating, 14)}</span>
+                    </div>
+                    <div class="review-text">${r.comment || '<em>No comment</em>'}</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</div>
+                </div>
+            `;
+        });
+    } else {
+        reviewHtml = '<p style="color:var(--text-muted);text-align:center;padding:32px;">No reviews yet for this book.</p>';
+    }
+
+    // Calculate average
+    let avgHtml = '';
+    if (reviews.length > 0) {
+        const avgRating = (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1);
+        avgHtml = `
+            <div style="text-align:center;padding:16px 0;border-bottom:1px solid var(--border-color);margin-bottom:8px;">
+                <div style="font-size:32px;font-weight:700;color:var(--accent);">${avgRating}</div>
+                <div style="margin:4px 0;">${renderStars(Math.round(avgRating), 20)}</div>
+                <div style="font-size:13px;color:var(--text-muted);">${reviews.length} review(s)</div>
+            </div>
+        `;
+    }
+
+    openModal(`
+        <div class="modal-content" style="width:500px;">
+            <div class="modal-head">
+                <h2><i class="ri-chat-3-line" style="color:var(--accent);"></i> Reviews for "${bookTitle}"</h2>
+                <i class="ri-close-line close-modal" onclick="closeModal()"></i>
+            </div>
+            ${avgHtml}
+            <div style="max-height:350px;overflow-y:auto;padding:0 4px;">
+                ${reviewHtml}
+            </div>
+            <button class="primary-btn" style="width:100%;justify-content:center;margin-top:16px;" onclick="openRateModal(${bookId},'${bookTitle.replace(/'/g, "\\'")}')">
+                <i class="ri-edit-line"></i> Write a Review
+            </button>
+        </div>
+    `);
+}
+
 // ============= CART =============
 
 let cachedCartTotal = 0;
+let appliedVoucher = null; // { code, discount_percent }
 
 async function renderCart() {
     if (!appState.customerId) {
@@ -171,6 +231,7 @@ async function renderCart() {
 
     if (!cartData || !cartData.items || cartData.items.length === 0) {
         cachedCartTotal = 0;
+        appliedVoucher = null;
         container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);"><i class="ri-shopping-bag-line" style="font-size:48px;display:block;margin-bottom:12px;"></i>Your cart is empty. Browse the <a href="#" onclick="document.querySelector('.nav-item[data-target=store]').click();return false;" style="color:var(--accent);">Book Store</a> to add items.</div>`;
         return;
     }
@@ -204,16 +265,67 @@ async function renderCart() {
     });
     html += `</div>`;
 
+    // Voucher input section
     html += `
-        <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:24px;padding:20px 24px;background:var(--bg-card,var(--bg-secondary));border-radius:16px;border:1px solid var(--border-color);">
-            <div style="margin-right:24px;font-size:14px;color:var(--text-muted);">${cartData.items.length} item(s)</div>
-            <div style="font-size:14px;color:var(--text-muted);margin-right:8px;">Total:</div>
-            <div style="font-weight:700;font-size:28px;color:var(--accent);">$${grandTotal.toFixed(2)}</div>
+        <div class="voucher-section" style="margin-top:24px;padding:20px 24px;background:var(--bg-card,var(--bg-secondary));border-radius:16px;border:1px solid var(--border-color);">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <i class="ri-coupon-3-line" style="font-size:20px;color:var(--accent);"></i>
+                <input type="text" id="voucher-input" class="form-input" placeholder="Enter voucher code..." style="flex:1;margin:0;">
+                <button class="primary-btn" onclick="applyVoucher()" style="white-space:nowrap;"><i class="ri-check-line"></i> Apply</button>
+                ${appliedVoucher ? `<button class="card-btn" style="flex:none;width:40px;color:var(--danger);" onclick="removeVoucher()"><i class="ri-close-line"></i></button>` : ''}
+            </div>
+            ${appliedVoucher ? `<div class="voucher-applied" style="margin-top:12px;padding:8px 16px;background:rgba(5,205,153,0.1);border-radius:8px;display:flex;align-items:center;gap:8px;"><i class="ri-checkbox-circle-fill" style="color:var(--success);"></i><span style="font-weight:600;color:var(--success);">Voucher "${appliedVoucher.code}" applied — ${appliedVoucher.discount_percent}% OFF</span></div>` : ''}
         </div>
     `;
 
-    cachedCartTotal = grandTotal;
+    // Total section with discount
+    const discountAmount = appliedVoucher ? grandTotal * (appliedVoucher.discount_percent / 100) : 0;
+    const finalTotal = grandTotal - discountAmount;
+
+    html += `
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:24px;padding:20px 24px;background:var(--bg-card,var(--bg-secondary));border-radius:16px;border:1px solid var(--border-color);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-size:14px;color:var(--text-muted);">${cartData.items.length} item(s) · Subtotal</div>
+                <div style="font-size:18px;font-weight:600;color:var(--text-main);">$${grandTotal.toFixed(2)}</div>
+            </div>
+            ${appliedVoucher ? `
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-size:14px;color:var(--success);"><i class="ri-coupon-3-line"></i> Discount (${appliedVoucher.discount_percent}%)</div>
+                <div style="font-size:18px;font-weight:600;color:var(--success);">-$${discountAmount.toFixed(2)}</div>
+            </div>
+            ` : ''}
+            <div style="display:flex;justify-content:space-between;align-items:center;border-top:2px solid var(--border-color);padding-top:12px;margin-top:4px;">
+                <div style="font-size:14px;color:var(--text-muted);">Total</div>
+                <div style="font-weight:700;font-size:28px;color:var(--accent);">$${finalTotal.toFixed(2)}</div>
+            </div>
+        </div>
+    `;
+
+    cachedCartTotal = finalTotal;
     container.innerHTML = html;
+}
+
+// ============= FEATURE 3: VOUCHER APPLICATION =============
+
+async function applyVoucher() {
+    const codeInput = document.getElementById('voucher-input');
+    const code = codeInput ? codeInput.value.trim() : '';
+    if (!code) { showToast("Please enter a voucher code", "error"); return; }
+
+    const res = await apiCall(`/catalog/vouchers/?code=${encodeURIComponent(code)}`);
+    if (res && !res.error) {
+        appliedVoucher = { code: res.code, discount_percent: res.discount_percent };
+        showToast(`Voucher applied! ${res.discount_percent}% discount`);
+        renderCart();
+    } else {
+        showToast("Invalid or inactive voucher code", "error");
+    }
+}
+
+function removeVoucher() {
+    appliedVoucher = null;
+    showToast("Voucher removed");
+    renderCart();
 }
 
 // ============= ORDERS =============
@@ -278,6 +390,8 @@ function renderDashboard() {
     `;
 }
 
+// ============= FEATURE 4: ADMIN MANAGE BOOKS (with EDIT) =============
+
 async function renderBooks() {
     const books = await apiCall("/books/") || [];
     let html = `
@@ -295,12 +409,148 @@ async function renderBooks() {
                 <h3>${b.title}</h3>
                 <p>by ${b.author}</p>
                 <div style="font-weight:600;font-size:18px;margin-bottom:16px;color:var(--accent);">$${b.price} <span style="font-size:12px;font-weight:400;color:var(--text-muted)">| Stock: ${b.stock}</span></div>
+                <div class="card-actions">
+                    <button class="card-btn" onclick="openEditBookModal(${b.id}, '${b.title.replace(/'/g, "\\'")}', '${b.author.replace(/'/g, "\\'")}', ${b.price}, ${b.stock})"><i class="ri-edit-line"></i> Edit</button>
+                </div>
             </div>
         `;
     });
     html += `</div></div>`;
     contentArea.innerHTML = html;
 }
+
+function openEditBookModal(bookId, title, author, price, stock) {
+    openModal(`
+        <div class="modal-content">
+            <div class="modal-head"><h2><i class="ri-edit-line" style="color:var(--accent);"></i> Edit Book</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <form onsubmit="updateBook(event, ${bookId})">
+                <div class="form-group"><label>Title</label><input type="text" id="eb-title" class="form-input" value="${title}" required></div>
+                <div class="form-group"><label>Author</label><input type="text" id="eb-author" class="form-input" value="${author}" required></div>
+                <div class="form-group"><label>Price ($)</label><input type="number" step="0.01" id="eb-price" class="form-input" value="${price}" required></div>
+                <div class="form-group"><label>Stock</label><input type="number" id="eb-stock" class="form-input" value="${stock}" required></div>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;margin-top:24px;"><i class="ri-save-line"></i> Save Changes</button>
+            </form>
+        </div>
+    `);
+}
+
+async function updateBook(e, bookId) {
+    e.preventDefault();
+    const data = {
+        title: document.getElementById('eb-title').value,
+        author: document.getElementById('eb-author').value,
+        price: parseFloat(document.getElementById('eb-price').value),
+        stock: parseInt(document.getElementById('eb-stock').value)
+    };
+    const res = await apiCall(`/staff/${bookId}/`, 'PUT', data);
+    if (res && !res.error) {
+        showToast("Book updated!");
+        closeModal();
+        renderBooks();
+    }
+}
+
+// ============= FEATURE 2: ADMIN VOUCHER MANAGEMENT =============
+
+async function renderVouchers() {
+    const vouchers = await apiCall("/catalog/vouchers/") || [];
+    let html = `
+        <div class="view-section">
+            <div class="page-header">
+                <div><h1><i class="ri-coupon-3-line" style="color:var(--accent);"></i> Manage Vouchers</h1><p>Total: ${vouchers.length}</p></div>
+                <button class="primary-btn" onclick="openVoucherModal()"><i class="ri-add-line"></i> Create Voucher</button>
+            </div>
+            <div class="grid-cards">
+    `;
+
+    if (vouchers.length === 0) {
+        html += `<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;"><i class="ri-coupon-3-line" style="font-size:48px;display:block;margin-bottom:12px;"></i>No vouchers yet. Create one!</div>`;
+    }
+
+    vouchers.forEach(v => {
+        const statusColor = v.active ? 'var(--success)' : 'var(--danger)';
+        const statusText = v.active ? 'Active' : 'Inactive';
+        html += `
+            <div class="data-card">
+                <div class="card-icon" style="background:${v.active ? 'rgba(5,205,153,0.1)' : 'rgba(238,93,80,0.1)'};color:${statusColor};"><i class="ri-coupon-3-line"></i></div>
+                <h3 style="font-family:monospace;letter-spacing:2px;">${v.code}</h3>
+                <div style="font-weight:700;font-size:28px;color:var(--accent);margin:8px 0;">${v.discount_percent}% OFF</div>
+                <div style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;color:${statusColor};background:${v.active ? 'rgba(5,205,153,0.1)' : 'rgba(238,93,80,0.1)'};">${statusText}</div>
+                <div class="card-actions" style="margin-top:16px;">
+                    <button class="card-btn" onclick="toggleVoucher(${v.id}, ${v.active})"><i class="ri-${v.active ? 'pause' : 'play'}-line"></i> ${v.active ? 'Deactivate' : 'Activate'}</button>
+                    <button class="card-btn" onclick="openEditVoucherModal(${v.id}, '${v.code}', ${v.discount_percent}, ${v.active})"><i class="ri-edit-line"></i> Edit</button>
+                    <button class="card-btn" style="color:var(--danger);" onclick="deleteVoucher(${v.id})"><i class="ri-delete-bin-line"></i></button>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `</div></div>`;
+    contentArea.innerHTML = html;
+}
+
+function openVoucherModal() {
+    openModal(`
+        <div class="modal-content">
+            <div class="modal-head"><h2><i class="ri-coupon-3-line" style="color:var(--accent);"></i> Create Voucher</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <form onsubmit="createVoucher(event)">
+                <div class="form-group"><label>Voucher Code</label><input type="text" id="v-code" class="form-input" placeholder="e.g. SAVE20" required></div>
+                <div class="form-group"><label>Discount (%)</label><input type="number" id="v-discount" class="form-input" min="1" max="100" placeholder="1-100" required></div>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;margin-top:24px;"><i class="ri-add-line"></i> Create</button>
+            </form>
+        </div>
+    `);
+}
+
+function openEditVoucherModal(id, code, discount, active) {
+    openModal(`
+        <div class="modal-content">
+            <div class="modal-head"><h2><i class="ri-edit-line" style="color:var(--accent);"></i> Edit Voucher</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <form onsubmit="updateVoucher(event, ${id})">
+                <div class="form-group"><label>Voucher Code</label><input type="text" id="ev-code" class="form-input" value="${code}" required></div>
+                <div class="form-group"><label>Discount (%)</label><input type="number" id="ev-discount" class="form-input" value="${discount}" min="1" max="100" required></div>
+                <div class="form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="ev-active" ${active ? 'checked' : ''}> Active</label></div>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;margin-top:24px;"><i class="ri-save-line"></i> Save</button>
+            </form>
+        </div>
+    `);
+}
+
+async function createVoucher(e) {
+    e.preventDefault();
+    const data = {
+        code: document.getElementById('v-code').value.toUpperCase(),
+        discount_percent: parseInt(document.getElementById('v-discount').value),
+        active: true
+    };
+    const res = await apiCall('/catalog/vouchers/', 'POST', data);
+    if (res && !res.error) { showToast("Voucher created!"); closeModal(); renderVouchers(); }
+}
+
+async function updateVoucher(e, id) {
+    e.preventDefault();
+    const data = {
+        code: document.getElementById('ev-code').value.toUpperCase(),
+        discount_percent: parseInt(document.getElementById('ev-discount').value),
+        active: document.getElementById('ev-active').checked
+    };
+    const res = await apiCall(`/catalog/vouchers/${id}/`, 'PUT', data);
+    if (res && !res.error) { showToast("Voucher updated!"); closeModal(); renderVouchers(); }
+}
+
+async function toggleVoucher(id, currentActive) {
+    const res = await apiCall(`/catalog/vouchers/${id}/`, 'PUT', { active: !currentActive });
+    if (res && !res.error) { showToast(currentActive ? "Voucher deactivated" : "Voucher activated"); renderVouchers(); }
+}
+
+async function deleteVoucher(id) {
+    if (!confirm("Delete this voucher?")) return;
+    await apiCall(`/catalog/vouchers/${id}/`, 'DELETE');
+    showToast("Voucher deleted");
+    renderVouchers();
+}
+
+// ============= CUSTOMERS =============
 
 async function renderCustomers() {
     const customers = await apiCall("/customers/") || [];
@@ -336,7 +586,7 @@ function addToCart(bookId) {
         openCustomerSelector();
         return;
     }
-    apiCall('/cart/items/', 'POST', { cart: appState.customerId, book_id: bookId, quantity: 1 })
+    apiCall('/cart/items/', 'POST', { customer_id: appState.customerId, book_id: bookId, quantity: 1 })
         .then(res => {
             if (res) {
                 if (res.error) showToast(res.error, 'error');
@@ -365,13 +615,17 @@ async function createBook(e) {
 
 async function createCustomer(e) {
     e.preventDefault();
-    const data = { name: document.getElementById('c-name').value, email: document.getElementById('c-email').value };
+    const data = {
+        name: document.getElementById('c-name').value,
+        email: document.getElementById('c-email').value,
+        password: document.getElementById('c-password').value
+    };
     const res = await apiCall('/customers/', 'POST', data);
     if (res) {
         showToast("Customer registered! Cart auto-created.");
         closeModal();
-        switchToCustomer(res.id, res.name);
-        renderCustomers();
+        switchToCustomer(res.id, res.name, res.role);
+        if (appState.currentView === 'customers') renderCustomers();
     }
 }
 
@@ -393,6 +647,7 @@ function switchToCustomer(id, name, role) {
     appState.customerId = id;
     appState.customerName = name;
     appState.customerRole = role || 'customer';
+    appliedVoucher = null; // Reset voucher on customer switch
     document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${role === 'admin' ? 'e53e3e' : '4318ff'}&color=fff`;
     document.getElementById('user-name').textContent = role === 'admin' ? `${name} (Admin)` : name;
     updateAdminNav();
@@ -400,7 +655,21 @@ function switchToCustomer(id, name, role) {
     if (appState.currentView === 'store') renderStore();
 }
 
-// ============= CHECKOUT =============
+function logout() {
+    appState.customerId = null;
+    appState.customerName = 'Guest';
+    appState.customerRole = 'customer';
+    appliedVoucher = null;
+    cachedCartTotal = 0;
+    document.getElementById('user-avatar').src = 'https://ui-avatars.com/api/?name=Guest&background=4318ff&color=fff';
+    document.getElementById('user-name').textContent = 'Guest';
+    updateAdminNav();
+    closeModal();
+    showToast('Logged out successfully');
+    document.querySelector('.nav-item[data-target="store"]').click();
+}
+
+// ============= CHECKOUT (FEATURE 5: CLEAR CART AFTER SUCCESS) =============
 
 let selectedPayMethod = 'credit_card';
 let selectedShipMethod = 'standard';
@@ -457,6 +726,7 @@ function openCheckoutModal() {
 
             <div class="checkout-summary">
                 <div class="checkout-row"><span>Subtotal</span><span>$${cachedCartTotal.toFixed(2)}</span></div>
+                ${appliedVoucher ? `<div class="checkout-row" style="color:var(--success);"><span>Voucher (${appliedVoucher.discount_percent}% OFF)</span><span>Applied</span></div>` : ''}
                 <div class="checkout-row total"><span>Total</span><span>$${cachedCartTotal.toFixed(2)}</span></div>
             </div>
 
@@ -490,7 +760,11 @@ async function placeOrder() {
     if (res) {
         if (res.error) showToast(res.error, 'error');
         else {
-            showToast(`Order placed! $${cachedCartTotal.toFixed(2)}`);
+            // FEATURE 5: Clear cart after successful checkout
+            await apiCall(`/cart/clear/${appState.customerId}/`, 'DELETE');
+            appliedVoucher = null; // Reset voucher after checkout
+            cachedCartTotal = 0;
+            showToast(`Order placed! $${data.total_amount.toFixed(2)}`);
             closeModal();
             document.querySelector('.nav-item[data-target="orders"]').click();
         }
@@ -561,39 +835,81 @@ function setStarRating(val) {
 // ============= CUSTOMER SELECTOR =============
 
 async function openCustomerSelector() {
-    const customers = await apiCall("/customers/") || [];
-
-    let list = '';
-    customers.forEach(c => {
-        const isActive = c.id === appState.customerId;
-        const isAdmin = c.role === 'admin';
+    if (appState.customerId) {
+        // Logged in: show user info + logout
+        const isAdmin = appState.customerRole === 'admin';
         const bgColor = isAdmin ? 'e53e3e' : '4318ff';
-        list += `
-            <div class="data-card" style="padding:16px;cursor:pointer;display:flex;align-items:center;gap:12px;${isActive ? 'border-color:var(--accent);background:rgba(67,24,255,0.05);' : ''}" onclick="switchToCustomer(${c.id},'${c.name.replace(/'/g, "\\'")}','${c.role || 'customer'}');closeModal();">
-                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=${bgColor}&color=fff" style="width:36px;height:36px;border-radius:50%;">
-                <div>
-                    <div style="font-weight:600;">${c.name} ${isAdmin ? '<span style="font-size:10px;padding:2px 8px;background:var(--danger);color:white;border-radius:10px;margin-left:6px;">ADMIN</span>' : ''}</div>
-                    <div style="font-size:12px;color:var(--text-muted);">${c.email}</div>
+        openModal(`
+            <div class="modal-content" style="width:400px;">
+                <div class="modal-head">
+                    <h2>Account</h2>
+                    <i class="ri-close-line close-modal" onclick="closeModal()"></i>
                 </div>
-                ${isActive ? '<i class="ri-check-line" style="margin-left:auto;color:var(--accent);font-size:20px;"></i>' : ''}
+                <div style="display:flex;align-items:center;gap:16px;padding:20px;background:var(--bg-primary);border-radius:var(--radius-md);margin-bottom:20px;">
+                    <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(appState.customerName)}&background=${bgColor}&color=fff" style="width:48px;height:48px;border-radius:50%;">
+                    <div>
+                        <div style="font-weight:700;font-size:18px;">${appState.customerName} ${isAdmin ? '<span style="font-size:10px;padding:2px 8px;background:var(--danger);color:white;border-radius:10px;margin-left:6px;">ADMIN</span>' : ''}</div>
+                        <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Logged in</div>
+                    </div>
+                </div>
+                <button class="primary-btn" style="width:100%;justify-content:center;background:var(--danger);box-shadow:0 4px 12px rgba(238,93,80,0.2);" onclick="logout()">
+                    <i class="ri-logout-box-line"></i> Logout
+                </button>
             </div>
-        `;
-    });
+        `);
+    } else {
+        // Not logged in: show login/register
+        openModal(`
+            <div class="modal-content" style="width:400px;">
+                <div class="modal-head">
+                    <h2>Welcome</h2>
+                    <i class="ri-close-line close-modal" onclick="closeModal()"></i>
+                </div>
+                <div style="text-align:center;padding:24px 0;">
+                    <i class="ri-user-line" style="font-size:48px;color:var(--text-muted);"></i>
+                    <p style="color:var(--text-muted);margin-top:12px;">Please login or register to continue</p>
+                </div>
+                <div style="display:flex;gap:12px;">
+                    <button class="primary-btn" style="flex:1;justify-content:center;" onclick="openLoginModal()">
+                        <i class="ri-login-box-line"></i> Login
+                    </button>
+                    <button class="primary-btn" style="flex:1;justify-content:center;background:var(--success);box-shadow:0 4px 12px rgba(5,205,153,0.2);" onclick="openCustomerModal()">
+                        <i class="ri-user-add-line"></i> Register
+                    </button>
+                </div>
+            </div>
+        `);
+    }
+}
 
+// ============= LOGIN MODAL =============
+
+function openLoginModal() {
     openModal(`
-        <div class="modal-content" style="width:400px;">
-            <div class="modal-head">
-                <h2>Select Customer</h2>
-                <i class="ri-close-line close-modal" onclick="closeModal()"></i>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;">
-                ${list || '<p style="color:var(--text-muted);text-align:center;">No customers yet.</p>'}
-            </div>
-            <button class="primary-btn" style="width:100%;justify-content:center;margin-top:16px;" onclick="closeModal();openCustomerModal();">
-                <i class="ri-user-add-line"></i> Register New Customer
-            </button>
+        <div class="modal-content">
+            <div class="modal-head"><h2><i class="ri-login-box-line" style="color:var(--accent);"></i> Login</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <form onsubmit="loginCustomer(event)">
+                <div class="form-group"><label>Email</label><input type="email" id="l-email" class="form-input" placeholder="Enter your email" required></div>
+                <div class="form-group"><label>Password</label><input type="password" id="l-password" class="form-input" placeholder="Enter your password" required></div>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;margin-top:24px;"><i class="ri-login-box-line"></i> Login</button>
+            </form>
+            <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted);">Don't have an account? <a href="#" onclick="openCustomerModal();return false;" style="color:var(--accent);font-weight:600;">Register</a></p>
         </div>
     `);
+}
+
+async function loginCustomer(e) {
+    e.preventDefault();
+    const data = {
+        email: document.getElementById('l-email').value,
+        password: document.getElementById('l-password').value
+    };
+    const res = await apiCall('/customers/login/', 'POST', data);
+    if (res && !res.error) {
+        showToast(`Welcome back, ${res.name}!`);
+        closeModal();
+        switchToCustomer(res.id, res.name, res.role);
+    }
 }
 
 // ============= MODALS =============
@@ -628,13 +944,15 @@ function openBookModal() {
 function openCustomerModal() {
     openModal(`
         <div class="modal-content">
-            <div class="modal-head"><h2>Register Customer</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
+            <div class="modal-head"><h2><i class="ri-user-add-line" style="color:var(--accent);"></i> Register</h2><i class="ri-close-line close-modal" onclick="closeModal()"></i></div>
             <form onsubmit="createCustomer(event)">
-                <div class="form-group"><label>Full Name</label><input type="text" id="c-name" class="form-input" required></div>
-                <div class="form-group"><label>Email</label><input type="email" id="c-email" class="form-input" required></div>
+                <div class="form-group"><label>Full Name</label><input type="text" id="c-name" class="form-input" placeholder="Enter your full name" required></div>
+                <div class="form-group"><label>Email</label><input type="email" id="c-email" class="form-input" placeholder="Enter your email" required></div>
+                <div class="form-group"><label>Password</label><input type="password" id="c-password" class="form-input" placeholder="Create a password" required></div>
                 <p style="font-size:12px;color:var(--text-muted);margin:16px 0;">*Auto-creates a cart via cart-service</p>
-                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;">Register</button>
+                <button type="submit" class="primary-btn" style="width:100%;justify-content:center;"><i class="ri-user-add-line"></i> Register</button>
             </form>
+            <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-muted);">Already have an account? <a href="#" onclick="openLoginModal();return false;" style="color:var(--accent);font-weight:600;">Login</a></p>
         </div>
     `);
 }

@@ -16,22 +16,35 @@ class CartCreate(APIView):
 
 class AddCartItem(APIView):
     def post(self, request):
+        customer_id = request.data.get("customer_id")
         book_id = request.data.get("book_id")
-        
+        quantity = request.data.get("quantity", 1)
+
+        if not customer_id or not book_id:
+            return Response({"error": "customer_id and book_id are required"}, status=400)
+
+        # Verify book exists
         try:
             r = requests.get(f"{BOOK_SERVICE_URL}/")
             books = r.json()
             if not any(b["id"] == book_id for b in books):
                 return Response({"error": "Book not found"}, status=404)
         except Exception:
-            # Fallback or error handling if book service is unreachable
             return Response({"error": "Failed to verify book"}, status=500)
 
-        serializer = CartItemSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        # Find or create cart for this customer
+        cart, created = Cart.objects.get_or_create(customer_id=customer_id)
+
+        # Check if item already in cart, if so increment quantity
+        existing = CartItem.objects.filter(cart=cart, book_id=book_id).first()
+        if existing:
+            existing.quantity += quantity
+            existing.save()
+            return Response(CartItemSerializer(existing).data, status=200)
+
+        # Create new cart item
+        item = CartItem.objects.create(cart=cart, book_id=book_id, quantity=quantity)
+        return Response(CartItemSerializer(item).data, status=201)
 
 class ModifyCartItem(APIView):
     def put(self, request, item_id):
@@ -57,10 +70,8 @@ class ModifyCartItem(APIView):
 
 class ViewCart(APIView):
     def get(self, request, customer_id):
-        try:
-            cart = Cart.objects.get(customer_id=customer_id)
-        except Cart.DoesNotExist:
-            return Response({"error": "Cart not found"}, status=404)
+        # Auto-create cart if it doesn't exist
+        cart, created = Cart.objects.get_or_create(customer_id=customer_id)
             
         items = CartItem.objects.filter(cart=cart)
         serializer = CartItemSerializer(items, many=True)
@@ -69,3 +80,13 @@ class ViewCart(APIView):
             "customer_id": cart.customer_id,
             "items": serializer.data
         })
+
+class ClearCart(APIView):
+    def delete(self, request, customer_id):
+        try:
+            cart = Cart.objects.get(customer_id=customer_id)
+        except Cart.DoesNotExist:
+            return Response({"error": "Cart not found"}, status=404)
+        
+        CartItem.objects.filter(cart=cart).delete()
+        return Response({"message": "Cart cleared"}, status=204)

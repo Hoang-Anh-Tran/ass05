@@ -7,6 +7,7 @@ class Customer(models.Model):
     ]
     name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
+    password = models.CharField(max_length=255, default='')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='customer')
 
     def __str__(self):

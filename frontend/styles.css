@@ -666,3 +666,20 @@ body {
     color: var(--text-muted);
     line-height: 1.5;
 }
+
+/* Voucher section */
+.voucher-section .form-input {
+    border-radius: 8px;
+}
+
+.voucher-applied {
+    animation: fadeIn 0.3s ease forwards;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}

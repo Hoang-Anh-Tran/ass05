@@ -32,3 +32,19 @@ class CustomerListCreate(APIView):
             return Response(serializer.data)
 
         return Response(serializer.errors)
+
+
+class CustomerLogin(APIView):
+    def post(self, request):
+        email = request.data.get("email", "")
+        password = request.data.get("password", "")
+
+        try:
+            customer = Customer.objects.get(email=email)
+        except Customer.DoesNotExist:
+            return Response({"error": "Email not found"}, status=404)
+
+        if customer.password != password:
+            return Response({"error": "Wrong password"}, status=401)
+
+        return Response(CustomerSerializer(customer).data)

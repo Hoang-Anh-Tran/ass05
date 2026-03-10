@@ -1,7 +1,7 @@
 from django.urls import path
-from .views import CustomerListCreate
+from .views import CustomerListCreate, CustomerLogin
 
 urlpatterns = [
-    path("", CustomerListCreate.as_view()),         # handles /  (via API gateway)
-    path("customers/", CustomerListCreate.as_view()),  # handles /customers/ (direct access)
+    path("", CustomerListCreate.as_view(), name="customer-list-create"),
+    path("login/", CustomerLogin.as_view(), name="customer-login"),
 ]
