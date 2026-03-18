@@ -35,3 +35,13 @@ def manage_books(request, book_id=None):
             
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+def health(request):
+    """Health check endpoint."""
+    from datetime import datetime
+    return JsonResponse({
+        "status": "healthy",
+        "service": "staff-service",
+        "timestamp": datetime.utcnow().isoformat(),
+    })

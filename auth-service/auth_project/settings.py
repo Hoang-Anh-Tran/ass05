@@ -1,12 +1,12 @@
 """
-Django settings for api_gateway project.
+Django settings for auth_project (auth-service).
 """
 import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-*yubk-08yk^ukdvb%%8jlz!a3p+n8tfpwf@&dzt$4lw%03#b1u"
+SECRET_KEY = "django-insecure-auth-service-key-change-in-production"
 
 DEBUG = True
 
@@ -20,13 +20,12 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
+    "rest_framework",
+    "app",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    "app.middleware.RateLimitMiddleware",
-    "app.middleware.JWTAuthenticationMiddleware",
-    "app.middleware.RequestLoggingMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -38,7 +37,7 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-ROOT_URLCONF = "api_gateway.urls"
+ROOT_URLCONF = "auth_project.urls"
 
 TEMPLATES = [
     {
@@ -55,7 +54,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "api_gateway.wsgi.application"
+WSGI_APPLICATION = "auth_project.wsgi.application"
 
 DATABASES = {
     "default": {
@@ -64,12 +63,10 @@ DATABASES = {
     }
 }
 
-AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
-]
+# JWT Configuration
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-jwt-secret-key-2024")
+JWT_ACCESS_TOKEN_EXPIRY_MINUTES = 30
+JWT_REFRESH_TOKEN_EXPIRY_DAYS = 7
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
@@ -77,19 +74,13 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 
-# JWT Configuration (shared secret with auth-service)
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-jwt-secret-key-2024")
-
-# Rate Limiting
-RATE_LIMIT_PER_MINUTE = 100
-
 # Structured JSON Logging
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "json": {
-            "format": '{"timestamp":"%(asctime)s","level":"%(levelname)s","service":"api-gateway","logger":"%(name)s","message":"%(message)s"}',
+            "format": '{"timestamp":"%(asctime)s","level":"%(levelname)s","service":"auth-service","logger":"%(name)s","message":"%(message)s"}',
         },
     },
     "handlers": {

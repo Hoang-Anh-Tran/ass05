@@ -90,3 +90,14 @@ class ClearCart(APIView):
         
         CartItem.objects.filter(cart=cart).delete()
         return Response({"message": "Cart cleared"}, status=204)
+
+
+class HealthView(APIView):
+    """Health check endpoint."""
+    def get(self, request):
+        from datetime import datetime
+        return Response({
+            "status": "healthy",
+            "service": "cart-service",
+            "timestamp": datetime.utcnow().isoformat(),
+        })

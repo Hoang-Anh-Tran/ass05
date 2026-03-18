@@ -6,7 +6,14 @@ urlpatterns = [
     path("", views.home, name="home"),
     path("admin/", admin.site.urls),
     
-    # Use re_path to capture any trailing path (making the slash and path optional)
+    # Observability
+    path("health/", views.health, name="health"),
+    path("metrics/", views.metrics, name="metrics"),
+    
+    # Auth service
+    re_path(r'^auth/?(?P<path>.*)$', views.auth, name="auth"),
+    
+    # Service proxies
     re_path(r'^customers/?(?P<path>.*)$', views.customers, name="customers"),
     re_path(r'^books/?(?P<path>.*)$', views.books, name="books"),
     re_path(r'^cart/?(?P<path>.*)$', views.cart, name="cart"),

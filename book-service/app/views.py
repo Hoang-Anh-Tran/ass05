@@ -47,3 +47,14 @@ class BookDetail(APIView):
             return Response({"error": "Book not found"}, status=404)
         book.delete()
         return Response({"message": "Deleted"}, status=204)
+
+
+class HealthView(APIView):
+    """Health check endpoint."""
+    def get(self, request):
+        from datetime import datetime
+        return Response({
+            "status": "healthy",
+            "service": "book-service",
+            "timestamp": datetime.utcnow().isoformat(),
+        })

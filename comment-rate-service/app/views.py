@@ -18,3 +18,14 @@ class CommentListCreate(APIView):
             serializer.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
+
+
+class HealthView(APIView):
+    """Health check endpoint."""
+    def get(self, request):
+        from datetime import datetime
+        return Response({
+            "status": "healthy",
+            "service": "comment-rate-service",
+            "timestamp": datetime.utcnow().isoformat(),
+        })

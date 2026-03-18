@@ -48,3 +48,14 @@ class CustomerLogin(APIView):
             return Response({"error": "Wrong password"}, status=401)
 
         return Response(CustomerSerializer(customer).data)
+
+
+class HealthView(APIView):
+    """Health check endpoint."""
+    def get(self, request):
+        from datetime import datetime
+        return Response({
+            "status": "healthy",
+            "service": "customer-service",
+            "timestamp": datetime.utcnow().isoformat(),
+        })

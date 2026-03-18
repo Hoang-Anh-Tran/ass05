@@ -5,8 +5,27 @@ const appState = {
     currentView: 'store',
     customerId: null,
     customerName: 'Guest',
-    customerRole: 'customer'
+    customerRole: 'customer',
+    accessToken: localStorage.getItem('accessToken') || null,
+    refreshToken: localStorage.getItem('refreshToken') || null,
 };
+
+// Restore session from localStorage
+(function restoreSession() {
+    const savedUser = localStorage.getItem('userData');
+    if (savedUser && appState.accessToken) {
+        try {
+            const user = JSON.parse(savedUser);
+            appState.customerId = user.id;
+            appState.customerName = user.name;
+            appState.customerRole = user.role || 'customer';
+            const bgColor = user.role === 'admin' ? 'e53e3e' : user.role === 'staff' ? 'e88e0a' : '4318ff';
+            document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=${bgColor}&color=fff`;
+            const roleLabel = user.role === 'admin' ? ' (Admin)' : user.role === 'staff' ? ' (Staff)' : '';
+            document.getElementById('user-name').textContent = `${user.name}${roleLabel}`;
+        } catch(e) { localStorage.clear(); }
+    }
+})();
 
 // --- Nav Visibility by Role ---
 function updateAdminNav() {
@@ -57,9 +76,36 @@ function showToast(message, type = 'success') {
 async function apiCall(endpoint, method = 'GET', data = null) {
     try {
         const options = { method, headers: { 'Content-Type': 'application/json' } };
+        // Attach JWT token if available
+        if (appState.accessToken) {
+            options.headers['Authorization'] = `Bearer ${appState.accessToken}`;
+        }
         if (data) options.body = JSON.stringify(data);
         const response = await fetch(`${API_URL}${endpoint}`, options);
-        if (!response.ok) throw new Error("API Request failed");
+
+        // Handle token expiry
+        if (response.status === 401 && appState.accessToken) {
+            // Try to refresh token
+            const refreshed = await tryRefreshToken();
+            if (refreshed) {
+                options.headers['Authorization'] = `Bearer ${appState.accessToken}`;
+                const retryResponse = await fetch(`${API_URL}${endpoint}`, options);
+                const retryText = await retryResponse.text();
+                return retryText ? JSON.parse(retryText) : null;
+            } else {
+                // Clear session
+                clearSession();
+                showToast('Session expired, please login again', 'error');
+                return null;
+            }
+        }
+
+        if (!response.ok) {
+            const errText = await response.text();
+            let errMsg = 'API Request failed';
+            try { errMsg = JSON.parse(errText).error || errMsg; } catch(e) {}
+            throw new Error(errMsg);
+        }
         const text = await response.text();
         return text ? JSON.parse(text) : null;
     } catch (e) {
@@ -67,6 +113,38 @@ async function apiCall(endpoint, method = 'GET', data = null) {
         console.error(e);
         return null;
     }
+}
+
+async function tryRefreshToken() {
+    if (!appState.refreshToken) return false;
+    try {
+        const resp = await fetch(`${API_URL}/auth/token/refresh/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: appState.refreshToken }),
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            appState.accessToken = data.access;
+            localStorage.setItem('accessToken', data.access);
+            return true;
+        }
+    } catch (e) { console.error('Token refresh failed:', e); }
+    return false;
+}
+
+function clearSession() {
+    appState.customerId = null;
+    appState.customerName = 'Guest';
+    appState.customerRole = 'customer';
+    appState.accessToken = null;
+    appState.refreshToken = null;
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userData');
+    document.getElementById('user-avatar').src = 'https://ui-avatars.com/api/?name=Guest&background=4318ff&color=fff';
+    document.getElementById('user-name').textContent = 'Guest';
+    updateAdminNav();
 }
 
 // --- Star Helpers ---
@@ -666,12 +744,35 @@ async function createCustomer(e) {
         email: document.getElementById('c-email').value,
         password: document.getElementById('c-password').value
     };
-    const res = await apiCall('/customers/', 'POST', data);
-    if (res) {
-        showToast("Customer registered! Cart auto-created.");
+
+    // Register via auth-service
+    const authRes = await apiCall('/auth/register/', 'POST', data);
+    if (!authRes || authRes.error) return;
+
+    // Also register in customer-service (for backward compatibility)
+    await apiCall('/customers/', 'POST', data);
+
+    // Auto-login after registration
+    const loginRes = await apiCall('/auth/login/', 'POST', {
+        email: data.email,
+        password: data.password,
+    });
+    if (loginRes && loginRes.access) {
+        appState.accessToken = loginRes.access;
+        appState.refreshToken = loginRes.refresh;
+        localStorage.setItem('accessToken', loginRes.access);
+        localStorage.setItem('refreshToken', loginRes.refresh);
+
+        const user = loginRes.user || authRes.user;
+        localStorage.setItem('userData', JSON.stringify(user));
+
+        showToast("Registered & logged in! Cart auto-created.");
         closeModal();
-        switchToCustomer(res.id, res.name, res.role);
+        switchToCustomer(user.id, user.name, user.role);
         if (appState.currentView === 'customers') renderCustomers();
+    } else {
+        showToast("Registered! Please login.");
+        closeModal();
     }
 }
 
@@ -698,20 +799,16 @@ function switchToCustomer(id, name, role) {
     document.getElementById('user-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=${bgColor}&color=fff`;
     const roleLabel = role === 'admin' ? ' (Admin)' : role === 'staff' ? ' (Staff)' : '';
     document.getElementById('user-name').textContent = `${name}${roleLabel}`;
+    localStorage.setItem('userData', JSON.stringify({ id, name, role: role || 'customer' }));
     updateAdminNav();
     showToast(`Logged in as ${name}${roleLabel}`);
     if (appState.currentView === 'store') renderStore();
 }
 
 function logout() {
-    appState.customerId = null;
-    appState.customerName = 'Guest';
-    appState.customerRole = 'customer';
+    clearSession();
     appliedVoucher = null;
     cachedCartTotal = 0;
-    document.getElementById('user-avatar').src = 'https://ui-avatars.com/api/?name=Guest&background=4318ff&color=fff';
-    document.getElementById('user-name').textContent = 'Guest';
-    updateAdminNav();
     closeModal();
     showToast('Logged out successfully');
     document.querySelector('.nav-item[data-target="store"]').click();
@@ -954,11 +1051,29 @@ async function loginCustomer(e) {
         email: document.getElementById('l-email').value,
         password: document.getElementById('l-password').value
     };
-    const res = await apiCall('/customers/login/', 'POST', data);
-    if (res && !res.error) {
-        showToast(`Welcome back, ${res.name}!`);
+
+    // Login via auth-service (JWT)
+    const authRes = await apiCall('/auth/login/', 'POST', data);
+    if (authRes && authRes.access) {
+        appState.accessToken = authRes.access;
+        appState.refreshToken = authRes.refresh;
+        localStorage.setItem('accessToken', authRes.access);
+        localStorage.setItem('refreshToken', authRes.refresh);
+
+        const user = authRes.user;
+        localStorage.setItem('userData', JSON.stringify(user));
+
+        showToast(`Welcome back, ${user.name}!`);
         closeModal();
-        switchToCustomer(res.id, res.name, res.role);
+        switchToCustomer(user.id, user.name, user.role);
+    } else {
+        // Fallback: try customer-service login (backward compat)
+        const res = await apiCall('/customers/login/', 'POST', data);
+        if (res && !res.error) {
+            showToast(`Welcome back, ${res.name}!`);
+            closeModal();
+            switchToCustomer(res.id, res.name, res.role);
+        }
     }
 }
 
