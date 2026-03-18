@@ -4,6 +4,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from app.middleware import get_metrics
 import json
+from rest_framework.decorators import api_view
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 # Service URLs
 SERVICE_URLS = {
@@ -96,50 +98,122 @@ def proxy_request(request, base_url, path_suffix):
 # ---------------- FORWARDING VIEWS ----------------
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Auth Service Proxy",
+    description="Proxies requests to the Authentication Service (register, login, token refresh).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def auth(request, path=""):
     return proxy_request(request, "http://auth-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Customer Service Proxy",
+    description="Proxies requests to the Customer Service (profiles, data).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def customers(request, path=""):
     return proxy_request(request, "http://customer-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Book Service Proxy",
+    description="Proxies requests to the Book Service (listing, details).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def books(request, path=""):
     return proxy_request(request, "http://book-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Cart Service Proxy",
+    description="Proxies requests to the Cart Service (item management).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def cart(request, path=""):
     return proxy_request(request, "http://cart-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Staff Service Proxy",
+    description="Proxies requests to the Staff Service (administrative tasks).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def staff(request, path=""):
     return proxy_request(request, "http://staff-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Manager Service Proxy",
+    description="Proxies requests to the Manager Service (business logic).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def manager(request, path=""):
     return proxy_request(request, "http://manager-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Catalog Service Proxy",
+    description="Proxies requests to the Catalog Service (vouchers, categories).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def catalog(request, path=""):
     return proxy_request(request, "http://catalog-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Order Service Proxy",
+    description="Proxies requests to the Order Service (Saga creation, status).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def orders(request, path=""):
     return proxy_request(request, "http://order-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Shipping Service Proxy",
+    description="Proxies requests to the Shipping Service (tracking, methods).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def shipping(request, path=""):
     return proxy_request(request, "http://ship-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Payment Service Proxy",
+    description="Proxies requests to the Payment Service (processing, status).",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def payment(request, path=""):
     return proxy_request(request, "http://pay-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Comment Service Proxy",
+    description="Proxies requests to the Comment & Rating Service.",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def comments(request, path=""):
     return proxy_request(request, "http://comment-rate-service:4000", path)
 
 @csrf_exempt
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
+@extend_schema(
+    summary="Recommendation AI Service Proxy",
+    description="Proxies requests to the Recommender AI Service.",
+    parameters=[OpenApiParameter("path", str, OpenApiParameter.PATH)]
+)
 def recommendations(request, path=""):
     return proxy_request(request, "http://recommender-ai-service:4000", path)
 

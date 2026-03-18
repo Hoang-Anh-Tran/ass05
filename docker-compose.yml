@@ -11,8 +11,10 @@ services:
       - "5672:5672"    # AMQP protocol
       - "15672:15672"  # Management UI (guest/guest)
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-guest}
+    env_file:
+      - .env
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 10s
@@ -26,8 +28,8 @@ services:
     container_name: auth-service
     ports:
       - "4012:4000"
-    environment:
-      - JWT_SECRET_KEY=bookstore-jwt-secret-key-2024
+    env_file:
+      - .env
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -39,8 +41,8 @@ services:
     container_name: api-gateway
     ports:
       - "4000:4000"
-    environment:
-      - JWT_SECRET_KEY=bookstore-jwt-secret-key-2024
+    env_file:
+      - .env
     depends_on:
       - auth-service
       - customer-service
@@ -62,36 +64,48 @@ services:
     container_name: customer-service
     ports:
       - "4001:4000"
+    env_file:
+      - .env
 
   book-service:
     build: ./book-service
     container_name: book-service
     ports:
       - "4002:4000"
+    env_file:
+      - .env
 
   cart-service:
     build: ./cart-service
     container_name: cart-service
     ports:
       - "4003:4000"
+    env_file:
+      - .env
 
   staff-service:
     build: ./staff-service
     container_name: staff-service
     ports:
       - "4004:4000"
+    env_file:
+      - .env
 
   manager-service:
     build: ./manager-service
     container_name: manager-service
     ports:
       - "4005:4000"
+    env_file:
+      - .env
 
   catalog-service:
     build: ./catalog-service
     container_name: catalog-service
     ports:
       - "4006:4000"
+    env_file:
+      - .env
 
   order-service:
     build: ./order-service
@@ -102,6 +116,8 @@ services:
       - ./shared:/shared
     environment:
       - PYTHONPATH=/shared
+    env_file:
+      - .env
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -111,24 +127,32 @@ services:
     container_name: ship-service
     ports:
       - "4008:4000"
+    env_file:
+      - .env
 
   pay-service:
     build: ./pay-service
     container_name: pay-service
     ports:
       - "4009:4000"
+    env_file:
+      - .env
 
   comment-rate-service:
     build: ./comment-rate-service
     container_name: comment-rate-service
     ports:
       - "4010:4000"
+    env_file:
+      - .env
 
   recommender-ai-service:
     build: ./recommender-ai-service
     container_name: recommender-ai-service
     ports:
       - "4011:4000"
+    env_file:
+      - .env
 
   frontend:
     build: ./frontend
@@ -137,3 +161,5 @@ services:
       - "3000:80"
     depends_on:
       - api-gateway
+    env_file:
+      - .env

@@ -1,8 +1,13 @@
 from django.contrib import admin
 from django.urls import path, re_path
 from app import views
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
+    # Swagger Documentation
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+
     path("", views.home, name="home"),
     path("admin/", admin.site.urls),
     

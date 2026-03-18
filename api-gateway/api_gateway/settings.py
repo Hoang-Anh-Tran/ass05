@@ -6,7 +6,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-*yubk-08yk^ukdvb%%8jlz!a3p+n8tfpwf@&dzt$4lw%03#b1u"
+SECRET_KEY = os.environ.get("SHARING_SECRET_KEY", "django-insecure-*yubk-08yk^ukdvb%%8jlz!a3p+n8tfpwf@&dzt$4lw%03#b1u")
 
 DEBUG = True
 
@@ -20,6 +20,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
+    "rest_framework",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -58,9 +60,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "api_gateway.wsgi.application"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'djongo',
+        'NAME': 'gateway_db',
+        'ENFORCE_SCHEMA': False,
+        'CLIENT': {
+            'host': os.environ.get("MONGO_URI"),
+        }
     }
 }
 
@@ -102,4 +108,16 @@ LOGGING = {
         "handlers": ["console"],
         "level": "INFO",
     },
+}
+
+# REST Framework & Swagger Settings
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Bookstore Microservices API',
+    'DESCRIPTION': 'API Gateway routing to all microservices (Auth, Order, Pay, Ship, Saga, etc.)',
+    'VERSION': '2.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }

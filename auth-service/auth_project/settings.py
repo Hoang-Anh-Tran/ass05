@@ -6,7 +6,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-auth-service-key-change-in-production"
+SECRET_KEY = os.environ.get("SHARING_SECRET_KEY", "django-insecure-auth-service-key-change-in-production")
 
 DEBUG = True
 
@@ -57,9 +57,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "auth_project.wsgi.application"
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'djongo',
+        'NAME': 'auth_db',
+        'ENFORCE_SCHEMA': False,
+        'CLIENT': {
+            'host': os.environ.get("MONGO_URI"),
+        }
     }
 }
 

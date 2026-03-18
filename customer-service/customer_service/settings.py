@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,7 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-$)&jgg#^tqns!1vxg_7&lgf%ah^7zyb)433v2vz=)2o#_^4upt"
+SECRET_KEY = os.environ.get("SHARING_SECRET_KEY", "django-insecure-$)&jgg#^tqns!1vxg_7&lgf%ah^7zyb)433v2vz=)2o#_^4upt")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -79,9 +80,13 @@ WSGI_APPLICATION = "customer_service.wsgi.application"
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'djongo',
+        'NAME': 'customer_db',
+        'ENFORCE_SCHEMA': False,
+        'CLIENT': {
+            'host': os.environ.get("MONGO_URI"),
+        }
     }
 }
 
